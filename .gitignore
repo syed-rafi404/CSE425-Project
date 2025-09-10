@@ -16,3 +16,15 @@ reports/
 
 # Datasets (do not commit large data files)
 data/
+
+
+# Python virtual environment
+venv/
+
+# Generated output & data
+runs/
+reports/
+data/
+
+# Python cache
+__pycache__/
