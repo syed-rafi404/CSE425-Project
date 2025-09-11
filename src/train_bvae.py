@@ -4,6 +4,7 @@ from torch import nn, optim
 from torchvision.utils import save_image
 from data_loader import get_data_loader
 from models import BetaVAE
+from utils import load_config
 
 def vae_loss_function(recon_x, x, mu, log_var, beta=1.0):
     recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
@@ -12,18 +13,26 @@ def vae_loss_function(recon_x, x, mu, log_var, beta=1.0):
 
 def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg = load_config('configs/default.yaml', {
+        'batch_size': 16,
+        'epochs': 10,
+        'beta': 1.0,
+    })
     DATA_DIR = 'data/UIEB/raw'
-    BATCH_SIZE = 16
+    BATCH_SIZE = int(cfg.get('batch_size', 16))
     IMAGE_SIZE = 256
     LEARNING_RATE = 1e-3
-    EPOCHS = 10
-    BETA = 1.0
+    EPOCHS = int(cfg.get('epochs', 10))
+    BETA = float(cfg.get('beta', 1.0))
 
     print(f"Using device: {DEVICE}")
 
     loader = get_data_loader(DATA_DIR, batch_size=BATCH_SIZE, image_size=IMAGE_SIZE)
     model = BetaVAE().to(DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    os.makedirs('runs/bvae/samples', exist_ok=True)
+    os.makedirs('runs/bvae/ckpts', exist_ok=True)
 
     for epoch in range(EPOCHS):
         for i, images in enumerate(loader):

@@ -7,10 +7,12 @@ from torchvision import transforms
 from tqdm import tqdm
 from models import Autoencoder, BetaVAE
 from data_loader import get_data_loader
+from utils import load_config
+from math import log10
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMAGE_SIZE = 256
-BATCH_SIZE = 16
+BATCH_SIZE = int(load_config('configs/default.yaml', {'batch_size': 16}).get('batch_size', 16))
 
 def prepare_resized_references(original_dir, resized_dir, image_size):
     if os.path.exists(resized_dir):
@@ -41,6 +43,22 @@ def generate_reconstructions(model, data_loader, device, output_dir):
             for j, recon_image in enumerate(recon_images):
                 save_image(recon_image, os.path.join(output_dir, f"recon_{i * BATCH_SIZE + j}.png"))
 
+def psnr(mse):
+    if mse <= 0:
+        return float('inf')
+    return 10 * log10(1.0 / mse)
+
+def ssim_batch(x, y):
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+    mu_x = torch.mean(x, dim=(2, 3), keepdim=True)
+    mu_y = torch.mean(y, dim=(2, 3), keepdim=True)
+    sigma_x = torch.var(x, dim=(2, 3), unbiased=False, keepdim=True)
+    sigma_y = torch.var(y, dim=(2, 3), unbiased=False, keepdim=True)
+    sigma_xy = torch.mean((x - mu_x) * (y - mu_y), dim=(2, 3), keepdim=True)
+    ssim_map = ((2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)) / ((mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2))
+    return ssim_map.mean().item()
+
 def visualize_uncertainty(bvae_model, image_tensor, num_samples=25, output_file="uncertainty_visualization.png"):
     bvae_model.eval()
     image_tensor = image_tensor.unsqueeze(0).to(DEVICE)
@@ -69,12 +87,26 @@ def main():
     ae_model.load_state_dict(torch.load('runs/ae/ckpts/baseline_ae.pth'))
     bvae_model = BetaVAE().to(DEVICE)
     bvae_model.load_state_dict(torch.load('runs/bvae/ckpts/beta_vae.pth'))
+    os.makedirs('runs/ae/generated', exist_ok=True)
+    os.makedirs('runs/bvae/generated', exist_ok=True)
+    os.makedirs('reports/figures', exist_ok=True)
+
     print("Generating reconstructions for baseline Autoencoder...")
     generate_reconstructions(ae_model, eval_loader, DEVICE, 'runs/ae/generated')
     print("Generating reconstructions for Beta-VAE...")
     generate_reconstructions(bvae_model, eval_loader, DEVICE, 'runs/bvae/generated')
+
+    print("\nComputing simple PSNR/SSIM on a batch...")
+    sample = next(iter(eval_loader)).to(DEVICE)
+    with torch.no_grad():
+        ae_out = ae_model(sample)
+        bvae_out, _, _ = bvae_model(sample)
+    mse_ae = torch.mean((ae_out - sample) ** 2).item()
+    mse_bvae = torch.mean((bvae_out - sample) ** 2).item()
+    print(f"AE PSNR: {psnr(mse_ae):.2f} dB, SSIM: {ssim_batch(ae_out, sample):.3f}")
+    print(f"β-VAE PSNR: {psnr(mse_bvae):.2f} dB, SSIM: {ssim_batch(bvae_out, sample):.3f}")
     print("\nReconstructions for FID calculation are saved.")
-    print("To calculate FID, run the following commands in your terminal:")
+    print("To calculate FID, run:")
     print(f"python -m pytorch_fid runs/ae/generated {RESIZED_REFERENCE_DIR} --device cuda")
     print(f"python -m pytorch_fid runs/bvae/generated {RESIZED_REFERENCE_DIR} --device cuda")
     print("\nVisualizing uncertainty for a sample image...")

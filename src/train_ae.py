@@ -3,15 +3,20 @@ import torch
 from torch import nn, optim
 from torchvision.utils import save_image
 from data_loader import get_data_loader
+from utils import load_config
 from models import Autoencoder
 
 def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg = load_config('configs/default.yaml', {
+        'batch_size': 16,
+        'epochs': 5,
+    })
     DATA_DIR = 'data/UIEB/raw'
-    BATCH_SIZE = 16
+    BATCH_SIZE = int(cfg.get('batch_size', 16))
     IMAGE_SIZE = 256
     LEARNING_RATE = 1e-3
-    EPOCHS = 5
+    EPOCHS = int(cfg.get('epochs', 5))
 
     print(f"Using device: {DEVICE}")
 
@@ -19,6 +24,9 @@ def main():
     model = Autoencoder().to(DEVICE)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    os.makedirs('runs/ae/samples', exist_ok=True)
+    os.makedirs('runs/ae/ckpts', exist_ok=True)
 
     for epoch in range(EPOCHS):
         for i, images in enumerate(loader):
