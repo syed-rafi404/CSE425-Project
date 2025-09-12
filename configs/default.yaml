@@ -1,4 +1,14 @@
 batch_size: 16
 epochs: 10
 beta: 1.0
+seed: 42
+image_size: 256
+learning_rate: 0.001
+latent_dim: 128
+data_dir: data/UIEB/raw
+reference_dir: data/UIEB/reference
+reference_resized_dir: data/UIEB/reference_resized
+val_split: 0.1
+patience: 3
+min_delta: 0.0
 
